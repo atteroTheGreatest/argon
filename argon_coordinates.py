@@ -5,13 +5,26 @@ from random import random, choice
 
 k = 0.00831
 
+# Vector operation (don't have numpy ;()
 
 def multiply_vector_by_number(number, vector):
     return [number * x for x in vector]
 
 
-def add_vectors(a, b, c):
+def add_three_vectors(a, b, c):
     return [x1 + x2 + x3 for x1, x2, x3 in zip(a, b, c)]
+
+
+def add_two_vectors(a, b):
+    return [x1 + x2 for x1, x2 in zip(a, b)]
+
+
+def vector_difference(a, b):
+    return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+
+
+def vector_length(vector):
+    return sqrt(vector[0] ** 2 + vector[1] ** 2 + vector[2] ** 2)
 
 
 def atoms_coordinates(n, b1, b2, b3):
@@ -20,9 +33,9 @@ def atoms_coordinates(n, b1, b2, b3):
     for ix in range(n):
         for iy in range(n):
             for iz in range(n):
-                atom = add_vectors(multiply_vector_by_number(ix - (n - 1.0)/2, b1),
-                                   multiply_vector_by_number(iy - (n - 1.0)/2, b2),
-                                   multiply_vector_by_number(iz - (n - 1.0)/2, b3))
+                atom = add_three_vectors(multiply_vector_by_number(ix - (n - 1.0)/2, b1),
+                                         multiply_vector_by_number(iy - (n - 1.0)/2, b2),
+                                         multiply_vector_by_number(iz - (n - 1.0)/2, b3))
                 atoms.append(atom)
     return atoms
 
@@ -72,9 +85,47 @@ def start_momentum(atoms, m, To):
     return momentums
 
 
+def compute_Fij(atom1, atom2, R, epsilon):
+    distance = vector_difference(atom1, atom2)
+    rij = vector_length(distance)
+    Fij = multiply_vector_by_number(12 * epsilon * ( (R / rij) ** 12 - (R / rij) ** 6) / (rij ** 2), distance)
+    return Fij
+
+
+def compute_Vij(atom1, atom2, R, epsilon):
+    distance = vector_difference(atom1, atom2)
+    rij = vector_length(distance)
+    Vij = epsilon * ( (R / rij) ** 12 - 2 * (R / rij) ** 6) / (rij ** 2)
+    return Vij
+
+
+def compute_forces_and_potential(atoms, R, f, L, epsilon):
+    N = len(atoms)
+    Fis = [(0, 0, 0)] * N
+    V = 0
+    for i in range(N):
+        for j in range(i + 1, N):
+            # print(i, j)
+            Fij = compute_Fij(atoms[i], atoms[j], R, epsilon)
+            Vij = compute_Vij(atoms[i], atoms[j], R, epsilon)
+            Fis[i] = add_two_vectors(Fis[i], Fij)
+            Fis[j] = add_two_vectors(Fis[j], multiply_vector_by_number(-1, Fij))
+            V += Vij
+
+    for i, atom in enumerate(atoms):
+        ri = vector_length(atom)
+        if ri > L:
+            fs = multiply_vector_by_number(f * (L - ri) / ri, atom)
+            Fis[i] = add_two_vectors(Fis[i], fs)
+            Vi = 1 / 2 * f *(L - ri) ** 2
+            V += Vi
+
+    return Fis, V
+    
+
 def main():
     assert(multiply_vector_by_number(3, (2, 3, 0)) == [6, 9, 0])
-    assert(add_vectors((1, 2, 3), (3, 4, 5), (3, 3, 3)) == [7, 9, 11])
+    assert(add_three_vectors((1, 2, 3), (3, 4, 5), (3, 3, 3)) == [7, 9, 11])
     
     parameters = read_parameters('argon.input')
 
@@ -101,6 +152,14 @@ def main():
     
     momentums = start_momentum(atoms, m, To)
     save_to_file(momentums, 'momentums.dat')
+    R = a
+    f = 10000
+    L = 2.3
+    epsilon = 1
+
+    forces, V = compute_forces_and_potential(atoms, R, f, L, epsilon)
+    print(V)
+    print(forces)
 
 
 if __name__ == '__main__':
