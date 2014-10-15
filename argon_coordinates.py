@@ -46,6 +46,13 @@ def save_to_file(coordinates, filename):
             f.write('%s\t%s\t%s\n' % (x, y, z))
 
 
+def append_to_file(coordinates, filename):
+    with open(filename, 'a+') as f:
+        f.write('\n\n')
+        for x, y, z in coordinates:
+            f.write('%s\t%s\t%s\n' % (x, y, z))
+
+
 def read_parameters(filename):
     with open(filename) as f:
         data = f.read()
@@ -131,6 +138,8 @@ def step(atoms, momentums, forces, tau, m, R, f, L, epsilon, number_of_steps=10)
 
     forces, _ = compute_forces_and_potential(atoms, R, f, L, epsilon)
     
+    save_to_file(atoms, 'avs.dat')
+
     for j in range(number_of_steps):
         for i in range(N):
             momentum_half[i] = add_two_vectors(momentums[i], multiply_vector_by_number(tau / 2, forces[i]))
@@ -139,7 +148,7 @@ def step(atoms, momentums, forces, tau, m, R, f, L, epsilon, number_of_steps=10)
         forces, _ = compute_forces_and_potential(atoms, R, f, L, epsilon)
         for i in range(N):
             momentums[i] = add_two_vectors(momentum_half[i], multiply_vector_by_number(tau / 2, forces[i]))
-        print(atoms[0])
+        append_to_file(atoms, 'avs.dat')
 
     return atoms, momentums 
 
@@ -184,7 +193,7 @@ def main():
     # print(forces)
     
     tau = 0.01
-    atoms, momentums = step(atoms, momentums, forces, tau, m, R, f, L, epsilon, number_of_steps=10)
+    atoms, momentums = step(atoms, momentums, forces, tau, m, R, f, L, epsilon, number_of_steps=500)
     print(atoms)
 
 if __name__ == '__main__':
