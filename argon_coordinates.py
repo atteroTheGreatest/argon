@@ -148,7 +148,8 @@ def step(atoms, momentums, forces, tau, m, R, f, L, epsilon, number_of_steps=10)
         forces, _ = compute_forces_and_potential(atoms, R, f, L, epsilon)
         for i in range(N):
             momentums[i] = add_two_vectors(momentum_half[i], multiply_vector_by_number(tau / 2, forces[i]))
-        append_to_file(atoms, 'avs.dat')
+        if j % 10 == 0:
+            append_to_file(atoms, 'avs.dat')
 
     return atoms, momentums 
 
@@ -193,7 +194,7 @@ def main():
     # print(forces)
     
     tau = 0.01
-    atoms, momentums = step(atoms, momentums, forces, tau, m, R, f, L, epsilon, number_of_steps=500)
+    atoms, momentums = step(atoms, momentums, forces, tau, m, R, f, L, epsilon, number_of_steps=5000)
     print(atoms)
 
 if __name__ == '__main__':
