@@ -95,7 +95,7 @@ def compute_Fij(atom1, atom2, R, epsilon):
 def compute_Vij(atom1, atom2, R, epsilon):
     distance = vector_difference(atom1, atom2)
     rij = vector_length(distance)
-    Vij = epsilon * ( (R / rij) ** 12 - 2 * (R / rij) ** 6) / (rij ** 2)
+    Vij = epsilon * ( (R / rij) ** 12 - 2 * (R / rij) ** 6) 
     return Vij
 
 
@@ -122,6 +122,27 @@ def compute_forces_and_potential(atoms, R, f, L, epsilon):
 
     return Fis, V
     
+
+def step(atoms, momentums, forces, tau, m, R, f, L, epsilon, number_of_steps=10):
+    N = len(atoms)
+    new_atoms = [(0, 0, 0)] * N
+    momentum_half = [(0, 0, 0)] * N
+    new_momentums = [(0, 0, 0)] * N
+
+    forces, _ = compute_forces_and_potential(atoms, R, f, L, epsilon)
+    
+    for j in range(number_of_steps):
+        for i in range(N):
+            momentum_half[i] = add_two_vectors(momentums[i], multiply_vector_by_number(tau / 2, forces[i]))
+            atoms[i] = add_two_vectors(atoms[i], multiply_vector_by_number(tau / m, momentum_half[i]))
+
+        forces, _ = compute_forces_and_potential(atoms, R, f, L, epsilon)
+        for i in range(N):
+            momentums[i] = add_two_vectors(momentum_half[i], multiply_vector_by_number(tau / 2, forces[i]))
+        print(atoms[0])
+
+    return atoms, momentums 
+
 
 def main():
     assert(multiply_vector_by_number(3, (2, 3, 0)) == [6, 9, 0])
@@ -152,6 +173,7 @@ def main():
     
     momentums = start_momentum(atoms, m, To)
     save_to_file(momentums, 'momentums.dat')
+
     R = a
     f = 10000
     L = 2.3
@@ -159,8 +181,11 @@ def main():
 
     forces, V = compute_forces_and_potential(atoms, R, f, L, epsilon)
     print(V)
-    print(forces)
-
+    # print(forces)
+    
+    tau = 0.01
+    atoms, momentums = step(atoms, momentums, forces, tau, m, R, f, L, epsilon, number_of_steps=10)
+    print(atoms)
 
 if __name__ == '__main__':
     main()
