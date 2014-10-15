@@ -38,13 +38,15 @@ def read_parameters(filename):
         data = f.read()
 
     numbers = data.split()
-    if len(numbers) != 2:
+    if len(numbers) != 4:
         print('Wrong %s data' % filename)
         return None
     else:
         a = float(numbers[0])
         n = int(numbers[1])
-    return a, n
+        m = float(numbers[2])
+        To = float(numbers[3])
+    return a, n, m, To
 
 
 def start_momentum(atoms, m, To):
@@ -79,7 +81,7 @@ def main():
     if not parameters:
         return 1
     else:
-        a, n = parameters
+        a, n, m, To = parameters
  
     # argon structure
     b1 = (a, 0, 0)
@@ -97,8 +99,6 @@ def main():
     # atoms = atoms_coordinates(n, p1, p2, p3)
     # save_to_file(atoms, 'simple.dat')
     
-    m = 39.948
-    To = 100
     momentums = start_momentum(atoms, m, To)
     save_to_file(momentums, 'momentums.dat')
 
