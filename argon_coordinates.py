@@ -8,7 +8,6 @@ k = 0.00831
 
 
 def atoms_coordinates(n, b1, b2, b3):
-
     atoms = []
     for ix in range(n):
         for iy in range(n):
@@ -93,51 +92,78 @@ def compute_Vij(atom1, atom2, R, epsilon):
     return Vij
 
 
-def compute_forces_and_potential(atoms, R, f, L, epsilon):
-    N = len(atoms)
-    Fis = [np.array([0, 0, 0])] * N
-    V = 0
-    for i in range(N):
-        for j in range(i + 1, N):
-            Fij = compute_Fij(atoms[i], atoms[j], R, epsilon)
-            Vij = compute_Vij(atoms[i], atoms[j], R, epsilon)
-            Fis[i] = Fis[i] +  Fij
-            Fis[j] = Fis[j] - Fij
-            V += Vij
+class Simulation(object):
 
-    for i, atom in enumerate(atoms):
-        ri = np.linalg.norm(atom)
-        if ri > L:
-            fs = f * (L - ri) / ri * atom
-            Fis[i] = Fis[i] + fs
-            Vi = 1 / 2 * f *(L - ri) ** 2
+    def __init__(self, atoms, momentums, tau, m, R, f, L,
+                 epsilon, output_filename='avs.dat', every=10):
+        self.atoms = atoms
+        self.momentums = momentums
+        self.forces = None
 
-            V += Vi
-    return Fis, V
+        self.tau = tau
+        self.m = m
+        self.R = R
+        self.f = f
+        self.L = L
+        self.epsilon = epsilon
+        self.N = len(atoms)
 
+        self.output_filename = output_filename
+        self.output_file_created = False
+        self.every = every
 
-def step(atoms, momentums, forces, tau, m, R, f, L, epsilon, number_of_steps=10):
-    N = len(atoms)
-    new_atoms = [np.array((0, 0, 0))] * N
-    momentum_half = [np.array((0, 0, 0))] * N
-    new_momentums = [np.array((0,0, 0))] * N
+    def compute_forces_and_potential(self):
+        Fis = [np.array([0, 0, 0])] * self.N
+        V = 0
+        for i in range(self.N):
+            for j in range(i + 1, self.N):
+                Fij = compute_Fij(self.atoms[i], self.atoms[j],
+                                  self.R, self.epsilon)
+                Vij = compute_Vij(self.atoms[i], self.atoms[j],
+                                  self.R, self.epsilon)
+                Fis[i] = Fis[i] +  Fij
+                Fis[j] = Fis[j] - Fij
+                V += Vij
 
-    forces, _ = compute_forces_and_potential(atoms, R, f, L, epsilon)
+        for i, atom in enumerate(self.atoms):
+            ri = np.linalg.norm(atom)
+            if ri > self.L:
+                fs = self.f * (self.L - ri) / ri * atom
+                Fis[i] = Fis[i] + fs
+                Vi = 1 / 2 * self.f * (self.L - ri) ** 2
+                V += Vi
 
-    save_to_file(atoms, 'avs.dat')
+        return Fis, V
 
-    for j in range(number_of_steps):
-        for i in range(N):
-            momentum_half[i] = momentums[i] + tau / 2 * forces[i]
-            atoms[i] = atoms[i] + tau / m * momentum_half[i]
+    def step(self):
+        momentum_half = [np.array((0, 0, 0))] * self.N
+        for i in range(self.N):
+            momentum_half[i] = self.momentums[i] + self.tau / 2 * self.forces[i]
+            self.atoms[i] = self.atoms[i] + self.tau / self.m * momentum_half[i]
 
-        forces, _ = compute_forces_and_potential(atoms, R, f, L, epsilon)
-        for i in range(N):
-            momentums[i] = momentum_half[i] + tau / 2 * forces[i]
-        if j % 10 == 0:
-            append_to_file(atoms, 'avs.dat')
+        self.forces, _ = self.compute_forces_and_potential()
+        for i in range(self.N):
+            self.momentums[i] = momentum_half[i] + self.tau / 2 * self.forces[i]
 
-    return atoms, momentums
+    def run(self, number_of_steps, initial_steps=10):
+        self.forces, _ = self.compute_forces_and_potential()
+        for j in range(initial_steps):
+            self.step()
+
+        self.store_results()
+        for j in range(number_of_steps):
+            self.step()
+            if j % self.every == 0:
+                self.store_results()
+
+        return self.atoms, self.momentums
+
+    def store_results(self):
+        if not self.output_file_created:
+            save_to_file(self.atoms, self.output_filename)
+            self.output_file_created = True
+        else:
+            append_to_file(self.atoms, self.output_filename)
 
 
 def main():
@@ -164,12 +190,12 @@ def main():
     L = 3
     epsilon = 1
 
-    forces, V = compute_forces_and_potential(atoms, R, f, L, epsilon)
+    tau = 0.003
+    simulation = Simulation(atoms, momentums, tau, m, R, f, L, epsilon, every=10)
+    forces, V = simulation.compute_forces_and_potential()
     print(V)
 
-    tau = 0.003
-    atoms, momentums = step(atoms, momentums, forces, tau, m, R, f, L, epsilon, number_of_steps=500)
-    print(atoms)
+    simulation.run(500, initial_steps=50)
 
 if __name__ == '__main__':
     main()

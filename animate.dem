@@ -13,7 +13,7 @@
 #set yrange[-2:2]  
 #set zrange[-2:2] 
 
-limit_iterations=50 # limits number of iterations if nonzero
+limit_iterations=500 # limits number of iterations if nonzero
 #
 #if (!limit_iterations) print "The following animation will never stop on its own. You have"
 #if (!limit_iterations) print "to stop it manually by interrupting gnuplot (e.g., press ^C)"
