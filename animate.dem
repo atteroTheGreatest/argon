@@ -23,6 +23,5 @@ limit_iterations=500 # limits number of iterations if nonzero
 #pause -1 "Press a key to start the rotation..."
 #
 iteration_count=0
-delay=20
 load "gnuplot.rot"
 reset

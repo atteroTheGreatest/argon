@@ -7,6 +7,7 @@
 #zrot=(zrot+10)%360
 #xrot=(xrot+17)%180
 #set view (50.+30.*sin(xrot/180.*pi)),60.+45.*sin(zrot/180.*pi)
-splot "avs.dat" index iteration_count
+splot "hehe.dat" index iteration_count
+pause 0.01
 iteration_count=iteration_count+1
 if ((!limit_iterations) || (iteration_count<=limit_iterations)) reread

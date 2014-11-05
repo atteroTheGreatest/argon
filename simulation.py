@@ -70,7 +70,6 @@ def start_momentum(atoms, m, To):
         momentums.append(momentum)
     return momentums
 
-
 def compute_Fij(atom1, atom2, R, epsilon):
     distance = atom1 - atom2
     rij = np.linalg.norm(distance)
@@ -94,25 +93,50 @@ def compute_Vij(atom1, atom2, R, epsilon):
 
 class Simulation(object):
 
-    def __init__(self, atoms, momentums, tau, m, R, f, L,
-                 epsilon, output_filename='avs.dat', every=10):
-        self.atoms = atoms
-        self.momentums = momentums
-        self.forces = None
+    def read_parameters(self, filename):
+        with open(filename) as f:
+            data = f.read()
 
-        self.tau = tau
-        self.m = m
-        self.R = R
-        self.f = f
-        self.L = L
-        self.epsilon = epsilon
-        self.N = len(atoms)
-        self.V = 0
-        self.P = 0
+        numbers = data.split()
+        if len(numbers) != 4:
+            print('Wrong %s data' % filename)
+            return None
+        else:
+            self.a = float(numbers[0])
+            self.n = int(numbers[1])
+            self.m = float(numbers[2])
+            self.To = float(numbers[3])
+            self.tau = 0.005
+            self.m = 10
+            self.R = self.a
+            self.f = 10000
+            self.L = 2.3
+            self.N = self.n ** 3
+            self.epsilon = 1
+            self.V = 0
+            self.P = 0
+            self.output_file_created = False
 
-        self.output_filename = output_filename
-        self.output_file_created = False
-        self.every = every
+    def __init__(self, configuration_file, output_filename=None, output_prefix=None):
+        self.read_parameters(configuration_file)
+        a = self.a
+        b1 = np.array((a, 0, 0))
+        b2 = np.array((a / 2, a * sqrt(3) / 2, 0))
+        b3 = np.array((a / 2, a * sqrt(3) / 6, a * sqrt(2 / 3)))
+        self.atoms = atoms_coordinates(self.n, b1, b2, b3)
+        self.momentums = start_momentum(self.atoms, self.m, self.To)
+        self.forces, _ = self.compute_forces_and_potential()
+
+        if output_filename is None:
+            if output_prefix:
+                self.output_filename = self.generate_from_prefix(output_prefix)
+            else:
+                self.output_filename = 'out.dat'
+        else:
+            self.output_filename = output_filename
+
+    def generate_from_prefix(self, output_prefix):
+        return "%s-%s-%s-%s-%s.dat" % (output_prefix, self.a, self.tau, self.To, self.n)
 
     def kinetic_energy(self, momentum):
         return np.linalg.norm(momentum) ** 2 / (2 * self.m)
@@ -158,36 +182,26 @@ class Simulation(object):
             momentum_half[i] = self.momentums[i] + self.tau / 2 * self.forces[i]
             self.atoms[i] = self.atoms[i] + self.tau / self.m * momentum_half[i]
 
-        self.forces = 0
         self.forces, _ = self.compute_forces_and_potential()
         for i in range(self.N):
             self.momentums[i] = momentum_half[i] + self.tau / 2 * self.forces[i]
 
-    def run(self, number_of_steps, initial_steps=10,
-            s_o=100, s_d=2000, s_out=1, s_xyz=1):
+    def run(self, s_o=100, s_d=2000, s_out=1, s_xyz=1):
 
         self.forces, _ = self.compute_forces_and_potential()
-        for j in range(initial_steps):
+        for j in range(s_o):
             self.step()
 
-        self.store_results()
+        self.store_coordinates()
         temperature_sum_in_period = 0
-        for j in range(1, number_of_steps):
-            #print('iteration', j)
-            #print('max distance', max(map(np.linalg.norm, self.atoms)))
-
+        for j in range(1, s_d):
             self.step()
             temperature = self.compute_temperature()
+            print(temperature)
             H = self.compute_H()
             temperature_sum_in_period += temperature
-            max_i = 0
-            max_num = 0
-            for i, force in enumerate(self.forces):
-                if np.linalg.norm(force) > max_num:
-                    max_num = np.linalg.norm(force)
-                    max_i = i
-            #print('max force atom', self.atoms[max_i])
-            #print(self.forces[max_i])
+            if j % s_xyz == 0:
+                self.store_coordinates()
             if j % s_out == 0:
                 self.store_results()
             if j % s_o == 0:
@@ -206,36 +220,22 @@ class Simulation(object):
         else:
             append_to_file(self.atoms, self.output_filename)
 
+    def store_coordinates(self):
+        if not self.output_file_created:
+            save_to_file(self.atoms, self.output_filename)
+            self.output_file_created = True
+        else:
+            append_to_file(self.atoms, self.output_filename)
+
 
 def main():
-    parameters = read_parameters('argon.input')
+    import sys
+    configuration_file = sys.argv[1]
+    output_file = sys.argv[2]
 
-    if not parameters:
-        return 1
-    else:
-        a, n, m, To = parameters
+    simulation = Simulation(configuration_file, output_filename=output_file)
+    simulation.run(s_o=10, s_d=1000)
 
-    # argon structure
-    b1 = np.array((a, 0, 0))
-    b2 = np.array((a / 2, a * sqrt(3) / 2, 0))
-    b3 = np.array((a / 2, a * sqrt(3) / 6, a * sqrt(2 / 3)))
-
-    atoms = atoms_coordinates(n, b1, b2, b3)
-    save_to_file(atoms, 'aus.dat')
-
-    momentums = start_momentum(atoms, m, To)
-    save_to_file(momentums, 'momentums.dat')
-    R = 0.38
-    f = 1000000
-    L = 2.3
-    epsilon = 1
-
-    tau = 0.0001
-    simulation = Simulation(atoms, momentums, tau, m, R, f, L, epsilon, every=1, output_filename='cold.dat')
-    forces, V = simulation.compute_forces_and_potential()
-    print(V)
-
-    simulation.run(2000, initial_steps=0, s_o=10, s_out=10)
 
 if __name__ == '__main__':
     main()
