@@ -21,15 +21,16 @@ def save_to_file(results, filename):
     with open(filename, 'w+') as f:
         template = "{}\t" * len(results[0]) + "\n"
         for x in results:
-            f.write(template.format(x))
+            f.write(template.format(*list(x)))
 
 
-def append_to_file(results, filename):
+def append_to_file(results, filename, blank_lines=False):
     with open(filename, 'a+') as f:
-        f.write('\n\n')
+        if blank_lines:
+            f.write('\n\n')
         template = "{}\t" * len(results[0]) + "\n"
         for x in results:
-            f.write(template.format(x))
+            f.write(template.format(*list(x)))
 
 
 def start_momentum(atoms, m, To):
@@ -105,33 +106,61 @@ class Configuration(object):
         self.s_out = int(numbers[11])
         self.s_xyz = int(numbers[12])
 
+    def __str__(self):
+        return "To_%s_tau_%s_n_%s" % (self.To, self.tau, self.n)
+
 
 class Reporter(object):
 
-    def __init__(self, filename=None):
+    def __init__(self, filename=None, blank_lines=False):
 
         self.output_filename = filename
         self.output_file_created = False
         self.results_output_file_created = False
+        self.blank_lines = blank_lines
 
     def store(self, results):
         if not self.output_file_created:
             save_to_file(results, self.output_filename)
             self.output_file_created = True
         else:
-            append_to_file(results, self.output_filename)
+            append_to_file(results, self.output_filename, self.blank_lines)
 
 
 class Simulation(object):
 
-    def __init__(self, configuration_file, output_filename=None, output_prefix=None):
+    def __init__(self, configuration_file, output_filename=None):
         self.conf = Configuration(configuration_file)
 
         self.N = self.conf.n ** 3
         self.V = 0
         self.P = 0
+        self.temperature = self.conf.To
+        self.H = 0
 
-        self.coordinate_reporter = Reporter(output_filename)
+        # prefix last name of output_filename with configuration
+        coordinate_output = self.prepare_output_path(output_filename, 'coords')
+        self.coordinate_reporter = Reporter(coordinate_output, blank_lines=True)
+
+        potential_output = self.prepare_output_path(output_filename, 'potential')
+        potential_reporter = Reporter(potential_output)
+
+        temperature_output = self.prepare_output_path(output_filename, 'temperature')
+        temperature_reporter = Reporter(temperature_output)
+
+        hamiltonian_output = self.prepare_output_path(output_filename, 'H')
+        hamiltonian_reporter = Reporter(hamiltonian_output)
+
+        pressure_output = self.prepare_output_path(output_filename, 'P')
+        pressure_reporter = Reporter(pressure_output)
+
+        self.reporters_to_params = (
+            (potential_reporter, lambda: self.V),
+            (temperature_reporter, lambda: self.temperature),
+            (hamiltonian_reporter, lambda: self.H),
+            (pressure_reporter, lambda: self.P),
+        )
+
         a = self.conf.a
         b1 = np.array((a, 0, 0))
         b2 = np.array((a / 2, a * sqrt(3) / 2, 0))
@@ -140,6 +169,11 @@ class Simulation(object):
         self.atoms = atoms_coordinates(self.conf.n, b1, b2, b3)
         self.momentums = start_momentum(self.atoms, self.conf.m, self.conf.To)
         self.forces, _ = self.compute_forces_and_potential()
+
+    def prepare_output_path(self, output_filename, param_name):
+        dirs = "/".join(output_filename.split('/')[:-1])
+        filename = output_filename.split('/')[-1]
+        return dirs + '/' + param_name + '_' + str(self.conf) + filename
 
     def kinetic_energy(self, momentum):
         return np.linalg.norm(momentum) ** 2 / (2 * self.conf.m)
@@ -150,8 +184,6 @@ class Simulation(object):
         V = 0
         for i in range(self.N):
             for j in range(i + 1, self.N):
-                if i == j:
-                    print('ups!', j)
                 Fij = compute_Fij(self.atoms[i], self.atoms[j],
                                   self.conf.R, self.conf.epsilon)
                 Fis[i] = Fis[i] +  Fij
@@ -220,17 +252,22 @@ class Simulation(object):
             self.step()
             temperature = self.compute_temperature()
             print(temperature)
-            H = self.compute_H()
+            self.H = self.compute_H()
             temperature_sum_in_period += temperature
             if j % s_xyz == 0:
                 self.coordinate_reporter.store(self.atoms)
             if j % s_out == 0:
+
                 self.coordinate_reporter.store(self.atoms)
             if j % s_o == 0:
                 print('temperature', temperature_sum_in_period / s_o)
+                self.temperature = temperature_sum_in_period / s_o
                 print('pot', self.V)
-                print('H', H)
+                print('H', self.H)
                 print('P', self.P)
+                for reporter, param in self.reporters_to_params:
+                    reporter.store([[j * self.conf.tau, param()]])
+
                 temperature_sum_in_period = 0
 
         return self.atoms, self.momentums
