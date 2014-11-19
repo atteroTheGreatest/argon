@@ -17,36 +17,25 @@ def atoms_coordinates(n, b1, b2, b3):
     return atoms
 
 
-def save_to_file(coordinates, filename):
+def save_to_file(results, filename):
     with open(filename, 'w+') as f:
-        for x in coordinates:
-            f.write('%s\t%s\t%s\n' % (x[0], x[1], x[2]))
+        template = "{}\t" * len(results[0]) + "\n"
+        for x in results:
+            f.write(template.format(x))
 
 
-def append_to_file(coordinates, filename):
+def append_to_file(results, filename):
     with open(filename, 'a+') as f:
         f.write('\n\n')
-        for x in coordinates:
-            f.write('%s\t%s\t%s\n' % (x[0], x[1], x[2]))
-
-
-def read_parameters(filename):
-    with open(filename) as f:
-        data = f.read()
-
-    numbers = data.split()
-    if len(numbers) != 4:
-        print('Wrong %s data' % filename)
-        return None
-    else:
-        a = float(numbers[0])
-        n = int(numbers[1])
-        m = float(numbers[2])
-        To = float(numbers[3])
-    return a, n, m, To
+        template = "{}\t" * len(results[0]) + "\n"
+        for x in results:
+            f.write(template.format(x))
 
 
 def start_momentum(atoms, m, To):
+    if To == 0:
+        return [np.array((0, 0, 0))] * len(atoms)
+
     max_energy = - k / 2 * To
     energies = []
     for atom in atoms:
@@ -70,6 +59,7 @@ def start_momentum(atoms, m, To):
         momentums.append(momentum)
     return momentums
 
+
 def compute_Fij(atom1, atom2, R, epsilon):
     distance = atom1 - atom2
     rij = np.linalg.norm(distance)
@@ -91,55 +81,68 @@ def compute_Vij(atom1, atom2, R, epsilon):
     return Vij
 
 
-class Simulation(object):
+class Configuration(object):
 
-    def read_parameters(self, filename):
+    def __init__(self, filename):
         with open(filename) as f:
             data = f.read()
 
-        numbers = data.split()
-        if len(numbers) != 4:
-            print('Wrong %s data' % filename)
-            return None
+        numbers = [float(row.split()[0]) for row in data.split('\n')[:13]]
+
+        self.n = int(numbers[0])
+        self.m = numbers[1]
+        self.epsilon = numbers[2]
+        self.R = numbers[3]
+
+        self.f = numbers[4]
+        self.L = numbers[5]
+        self.a = numbers[6]
+
+        self.To = numbers[7]
+        self.tau = numbers[8]
+        self.s_o = int(numbers[9])
+        self.s_d = int(numbers[10])
+        self.s_out = int(numbers[11])
+        self.s_xyz = int(numbers[12])
+
+
+class Reporter(object):
+
+    def __init__(self, filename=None):
+
+        self.output_filename = filename
+        self.output_file_created = False
+        self.results_output_file_created = False
+
+    def store(self, results):
+        if not self.output_file_created:
+            save_to_file(results, self.output_filename)
+            self.output_file_created = True
         else:
-            self.a = float(numbers[0])
-            self.n = int(numbers[1])
-            self.m = float(numbers[2])
-            self.To = float(numbers[3])
-            self.tau = 0.005
-            self.m = 10
-            self.R = self.a
-            self.f = 10000
-            self.L = 2.3
-            self.N = self.n ** 3
-            self.epsilon = 1
-            self.V = 0
-            self.P = 0
-            self.output_file_created = False
+            append_to_file(results, self.output_filename)
+
+
+class Simulation(object):
 
     def __init__(self, configuration_file, output_filename=None, output_prefix=None):
-        self.read_parameters(configuration_file)
-        a = self.a
+        self.conf = Configuration(configuration_file)
+
+        self.N = self.conf.n ** 3
+        self.V = 0
+        self.P = 0
+
+        self.coordinate_reporter = Reporter(output_filename)
+        a = self.conf.a
         b1 = np.array((a, 0, 0))
         b2 = np.array((a / 2, a * sqrt(3) / 2, 0))
         b3 = np.array((a / 2, a * sqrt(3) / 6, a * sqrt(2 / 3)))
-        self.atoms = atoms_coordinates(self.n, b1, b2, b3)
-        self.momentums = start_momentum(self.atoms, self.m, self.To)
+
+        self.atoms = atoms_coordinates(self.conf.n, b1, b2, b3)
+        self.momentums = start_momentum(self.atoms, self.conf.m, self.conf.To)
         self.forces, _ = self.compute_forces_and_potential()
 
-        if output_filename is None:
-            if output_prefix:
-                self.output_filename = self.generate_from_prefix(output_prefix)
-            else:
-                self.output_filename = 'out.dat'
-        else:
-            self.output_filename = output_filename
-
-    def generate_from_prefix(self, output_prefix):
-        return "%s-%s-%s-%s-%s.dat" % (output_prefix, self.a, self.tau, self.To, self.n)
-
     def kinetic_energy(self, momentum):
-        return np.linalg.norm(momentum) ** 2 / (2 * self.m)
+        return np.linalg.norm(momentum) ** 2 / (2 * self.conf.m)
 
     def compute_forces_and_potential(self):
 
@@ -150,23 +153,25 @@ class Simulation(object):
                 if i == j:
                     print('ups!', j)
                 Fij = compute_Fij(self.atoms[i], self.atoms[j],
-                                  self.R, self.epsilon)
+                                  self.conf.R, self.conf.epsilon)
                 Fis[i] = Fis[i] +  Fij
                 Fis[j] = Fis[j] - Fij
 
                 Vij = compute_Vij(self.atoms[i], self.atoms[j],
-                                  self.R, self.epsilon)
+                                  self.conf.R, self.conf.epsilon)
                 V += Vij
         P = 0
+
+        L = self.conf.L
         for i, atom in enumerate(self.atoms):
             ri = np.linalg.norm(atom)
-            if ri > self.L:
-                fs = self.f * (self.L - ri) / ri * atom
+            if ri > L:
+                fs = self.conf.f * (L - ri) / ri * atom
                 P += np.linalg.norm(fs)
                 Fis[i] = Fis[i] + fs
-                Vi = 1 / 2 * self.f * (self.L - ri) ** 2
+                Vi = 1 / 2 * self.conf.f * (L - ri) ** 2
                 V += Vi
-        self.P = P / 4 / np.pi / self.L ** 2
+        self.P = P / 4 / np.pi / L ** 2
         self.V = V
         return Fis, V
 
@@ -179,20 +184,37 @@ class Simulation(object):
     def step(self):
         momentum_half = [np.array((0, 0, 0))] * self.N
         for i in range(self.N):
-            momentum_half[i] = self.momentums[i] + self.tau / 2 * self.forces[i]
-            self.atoms[i] = self.atoms[i] + self.tau / self.m * momentum_half[i]
+            momentum_half[i] = self.momentums[i] + self.conf.tau / 2 * self.forces[i]
+            self.atoms[i] = self.atoms[i] + self.conf.tau / self.conf.m * momentum_half[i]
 
         self.forces, _ = self.compute_forces_and_potential()
         for i in range(self.N):
-            self.momentums[i] = momentum_half[i] + self.tau / 2 * self.forces[i]
+            self.momentums[i] = momentum_half[i] + self.conf.tau / 2 * self.forces[i]
 
-    def run(self, s_o=100, s_d=2000, s_out=1, s_xyz=1):
+    def run(self, s_o=None, s_d=None, s_out=None, s_xyz=None):
+        if s_o is None:
+            s_o = self.conf.s_o
+        if s_d is None:
+            s_d = self.conf.s_d
+        if s_out is None:
+            s_out = self.conf.s_out
+        if s_xyz is None:
+            s_xyz = self.conf.s_xyz
 
+        a = self.conf.a
+        b1 = np.array((a, 0, 0))
+        b2 = np.array((a / 2, a * sqrt(3) / 2, 0))
+        b3 = np.array((a / 2, a * sqrt(3) / 6, a * sqrt(2 / 3)))
+
+        self.atoms = atoms_coordinates(self.conf.n, b1, b2, b3)
+        self.momentums = start_momentum(self.atoms, self.conf.m, self.conf.To)
         self.forces, _ = self.compute_forces_and_potential()
+
         for j in range(s_o):
             self.step()
+        print('potential', self.V)
 
-        self.store_coordinates()
+        self.coordinate_reporter.store(self.atoms)
         temperature_sum_in_period = 0
         for j in range(1, s_d):
             self.step()
@@ -201,9 +223,9 @@ class Simulation(object):
             H = self.compute_H()
             temperature_sum_in_period += temperature
             if j % s_xyz == 0:
-                self.store_coordinates()
+                self.coordinate_reporter.store(self.atoms)
             if j % s_out == 0:
-                self.store_results()
+                self.coordinate_reporter.store(self.atoms)
             if j % s_o == 0:
                 print('temperature', temperature_sum_in_period / s_o)
                 print('pot', self.V)
@@ -213,19 +235,30 @@ class Simulation(object):
 
         return self.atoms, self.momentums
 
-    def store_results(self):
-        if not self.output_file_created:
-            save_to_file(self.atoms, self.output_filename)
-            self.output_file_created = True
-        else:
-            append_to_file(self.atoms, self.output_filename)
 
-    def store_coordinates(self):
-        if not self.output_file_created:
-            save_to_file(self.atoms, self.output_filename)
-            self.output_file_created = True
-        else:
-            append_to_file(self.atoms, self.output_filename)
+def find_best_a(simulation):
+    a_params = np.linspace(0.30, 0.51, 50)
+    vs = []
+    simulation.a = 0.38
+    simulation.run()
+    min_v = simulation.V
+    best_a = simulation.a
+
+    for a in a_params:
+        simulation.a = a
+        simulation.run()
+        new_v = simulation.V
+        if new_v < min_v:
+            min_v = new_v
+            best_a = a
+
+        vs.append(new_v)
+
+    print('Best pair:', best_a, min_v)
+
+    with open('cristal/potential.dat', 'w+') as f:
+        for a, v in zip(a_params, vs):
+            f.write('%s %s\n' % (a, v))
 
 
 def main():
@@ -234,7 +267,8 @@ def main():
     output_file = sys.argv[2]
 
     simulation = Simulation(configuration_file, output_filename=output_file)
-    simulation.run(s_o=10, s_d=1000)
+    simulation.run()
+    find_best_a(simulation)
 
 
 if __name__ == '__main__':
