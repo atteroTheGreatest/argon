@@ -95,13 +95,19 @@ void main()
 
 
 class Canvas(app.Canvas):
+    step = 0
 
-    def __init__(self, configuration_file, output_file):
+    def __init__(self, configuration_file, output_file, offline):
         app.Canvas.__init__(self, title='Molecular viewer',
                             keys='interactive')
 
-        self.simulation = Simulation(configuration_file, output_filename=output_file)
-        self.simulation.run(s_d=2)
+        if offline:
+            self.simulation = None
+            self.load_coordinates_from_file(output_file)
+        else:
+            self.simulation = Simulation(configuration_file, output_filename=output_file)
+            self.simulation.run(s_d=2)
+
         self.size = 1200, 800
 
         self.program = gloo.Program(vertex, fragment)
@@ -111,13 +117,37 @@ class Canvas(app.Canvas):
         self.translate = 20
         translate(self.view, 0, 0, -self.translate)
 
-        self.load_molecules_from_simulation(self.simulation.atoms)
+        self.load_molecules_from_simulation(self.get_coordinates())
         self.load_data()
 
         self.theta = 0
         self.phi = 0
 
         self._timer = app.Timer('auto', connect=self.on_timer, start=True)
+
+    def load_coordinates_from_file(self, filename):
+        coordinate_frames = []
+        frame = []
+        with open(filename) as f:
+            for line in f:
+                if line == '\n':
+                    if frame:
+                        coordinate_frames.append(frame)
+                        frame = []
+                else:
+                    coordinate = [float(x) for x in line.split()]
+                    frame.append(coordinate)
+
+        self.offline_atoms = coordinate_frames
+
+    def get_coordinates(self):
+        if self.simulation:
+            self.simulation.step()
+            return self.simulation.atoms
+        else:
+            coordinates = self.offline_atoms[self.step]
+            self.step += 1
+            return coordinates
 
     def load_molecules_from_simulation(self, atom_coordinates):
         self._nAtoms = len(atom_coordinates)
@@ -167,8 +197,8 @@ class Canvas(app.Canvas):
         rotate(self.model, self.theta, 0, 0, 1)
         rotate(self.model, self.phi, 0, 1, 0)
 
-        self.simulation.step()
-        self.coords = self.simulation.atoms
+
+        self.coords = self.get_coordinates()
         self.load_data()
         self.program['u_model'] = self.model
         self.update()
@@ -199,7 +229,11 @@ def main():
 
     configuration_file = sys.argv[1]
     output_file = sys.argv[2]
-    c = Canvas(configuration_file, output_file)
+
+    offline = False
+    if len(sys.argv) == 4:
+        offline = True
+    c = Canvas(configuration_file, output_file, offline)
     c.show()
     app.run()
 
