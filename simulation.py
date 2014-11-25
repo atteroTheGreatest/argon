@@ -1,6 +1,8 @@
 from __future__ import division
 from math import sqrt, log
 from random import random, choice
+import sys
+
 import numpy as np
 
 
@@ -12,7 +14,7 @@ def atoms_coordinates(n, b1, b2, b3):
     for ix in range(n):
         for iy in range(n):
             for iz in range(n):
-                atom = (ix - (n - 1.0) / 2) * b1 + (iy - (n - 1.0)/2) * b2 + (iz - (n - 1.0) / 2) * b3
+                atom = (ix - (n - 1.0) / 2) * b1 + (iy - (n - 1.0) / 2) * b2 + (iz - (n - 1.0) / 2) * b3
                 atoms.append(atom)
     return atoms
 
@@ -64,11 +66,7 @@ def start_momentum(atoms, m, To):
 def compute_Fij(atom1, atom2, R, epsilon):
     distance = atom1 - atom2
     rij = np.linalg.norm(distance)
-    if rij < 0.38:
-        rij = 0.38
-
-    Fij = - 12 * epsilon * ((R / rij) ** 12 - (R / rij) ** 6) / (rij ** 2) * distance
-
+    Fij = 12 * epsilon * ((R / rij) ** 12 - (R / rij) ** 6) / (rij ** 2) * distance
     return Fij
 
 
@@ -83,7 +81,6 @@ def compute_Vij(atom1, atom2, R, epsilon):
 
 
 class Configuration(object):
-
     def __init__(self, filename):
         with open(filename) as f:
             data = f.read()
@@ -111,7 +108,6 @@ class Configuration(object):
 
 
 class Reporter(object):
-
     def __init__(self, filename=None, blank_lines=False):
 
         self.output_filename = filename
@@ -128,7 +124,6 @@ class Reporter(object):
 
 
 class Simulation(object):
-
     def __init__(self, configuration_file, output_filename=None):
         self.conf = Configuration(configuration_file)
 
@@ -183,14 +178,14 @@ class Simulation(object):
         Fis = [np.array([0, 0, 0])] * self.N
         V = 0
         for i in range(self.N):
-            for j in range(i + 1, self.N):
+            for j in range(self.N):
+                if i == j:
+                    continue
                 Fij = compute_Fij(self.atoms[i], self.atoms[j],
                                   self.conf.R, self.conf.epsilon)
-                Fis[i] = Fis[i] +  Fij
-                Fis[j] = Fis[j] - Fij
-
+                Fis[i] = Fis[i] + Fij
                 Vij = compute_Vij(self.atoms[i], self.atoms[j],
-                                  self.conf.R, self.conf.epsilon)
+                                  self.conf.R, self.conf.epsilon) / 2
                 V += Vij
         P = 0
 
@@ -257,7 +252,6 @@ class Simulation(object):
             if j % s_xyz == 0:
                 self.coordinate_reporter.store(self.atoms)
             if j % s_out == 0:
-
                 self.coordinate_reporter.store(self.atoms)
             if j % s_o == 0:
                 print('temperature', temperature_sum_in_period / s_o)
@@ -299,13 +293,10 @@ def find_best_a(simulation):
 
 
 def main():
-    import sys
     configuration_file = sys.argv[1]
     output_file = sys.argv[2]
-
-    simulation = Simulation(configuration_file, output_filename=output_file)
+    simulation = Simulation(configuration_file, output_file)
     simulation.run()
-    find_best_a(simulation)
 
 
 if __name__ == '__main__':
